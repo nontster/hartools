@@ -3,12 +3,17 @@ package ar.com.yamamoto.hartools;
 import org.apache.wink.json4j.*;
 import java.io.*;
 import java.nio.charset.UnsupportedCharsetException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class HarFile extends TextFile {
 	private JSONObject json;
 	private Character csvDelimiter;
 	final private Character CSV_DEFAULT_DELIMITER = '\t';
 	final private String timingNames[] = { "blocked", "dns", "connect", "send", "wait", "receive", "ssl" };
+	private static Pattern p;
 	
 	public HarFile(String filename, String charset)
 			throws FileNotFoundException, IOException, JSONException, UnsupportedCharsetException {
@@ -34,6 +39,7 @@ public class HarFile extends TextFile {
 		readFile();
 		json = new JSONObject(getText());
 		setDelimiter(CSV_DEFAULT_DELIMITER);
+		p = Pattern.compile(".*?([^.]+\\.[^.]+)");
 	}
 	
 	/**
@@ -49,6 +55,9 @@ public class HarFile extends TextFile {
 		
 		// CSV headers
 		csvBuffer.append("url" + csvDelimiter
+			+ "domain" + csvDelimiter
+			+ "serverIPAddress" + csvDelimiter
+			+ "port" + csvDelimiter
 			+ "method" + csvDelimiter
 			+ "startedDateTime" + csvDelimiter
 			+ "time" + csvDelimiter
@@ -96,9 +105,20 @@ public class HarFile extends TextFile {
 		JSONObject responseObject = jsonObject.getJSONObject("response");
 		JSONObject contentObject = responseObject.getJSONObject("content");
 		JSONObject timingsObject = jsonObject.getJSONObject("timings");
+		String serverIPAddressString = jsonObject.getString("serverIPAddress");
+		String port = jsonObject.getString("connection");
 		
 		// General keys
 		csvLineBuffer.append(processKey(requestObject, "url") + csvDelimiter);
+		
+		try {
+			csvLineBuffer.append(getDomainName(processKey(requestObject, "url")) + csvDelimiter);
+		} catch (URISyntaxException e) {
+			System.err.println("URISyntaxException: " + e.getMessage());
+		}
+		
+		csvLineBuffer.append(serverIPAddressString + csvDelimiter);
+		csvLineBuffer.append(port + csvDelimiter);
 		csvLineBuffer.append(processKey(requestObject, "method") + csvDelimiter);
 		csvLineBuffer.append(processKey(jsonObject, "startedDateTime") + csvDelimiter);
 		csvLineBuffer.append(processKey(jsonObject, "time") + csvDelimiter);
@@ -192,5 +212,14 @@ public class HarFile extends TextFile {
 	public void setDelimiter(Character delimiter) {
 		if(delimiter != null)
 			csvDelimiter = delimiter;
+	}
+	
+	public static String getDomainName(String url) throws URISyntaxException {
+	    URI uri = new URI(url);
+		Matcher m = p.matcher(uri.getHost());
+		if (m.matches())
+			return m.group(1);
+		
+		return null;            
 	}
 }
